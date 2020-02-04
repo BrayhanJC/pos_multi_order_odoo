@@ -33,27 +33,7 @@ screens.PaymentScreenWidget.include({
             },
         });
     },
-    click_paymentmethods: function(id) {
-        var self = this;
-        var cashregister = null;
-        for ( var i = 0; i < this.pos.cashregisters.length; i++ ) {
-            if ( this.pos.cashregisters[i].journal_id[0] === id ){
-                cashregister = this.pos.cashregisters[i];
-                break;
-            }
-        }
-        if (cashregister.journal.pos_payment_ref) {
-            this.show_popup_payment_info({
-                confirm: function(infos) {
-                    //merge infos to new paymentline
-                    self.pos.get_order().add_paymentline_with_details(cashregister, infos);
-                },
-            });
-        }
-        else {
-            this._super(id);
-        }
-    },
+
 
     click_numpad: function(button) {
         var paymentlines = this.pos.get_order().get_paymentlines();
