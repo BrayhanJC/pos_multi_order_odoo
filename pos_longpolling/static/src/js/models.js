@@ -1,4 +1,4 @@
-odoo.define('pos_longpolling.LongpollingModel', function(require){
+odoo.define('pos_longpolling.model', function(require){
     "use strict";
 
     var Backbone = window.Backbone;

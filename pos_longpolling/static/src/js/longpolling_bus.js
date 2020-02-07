@@ -1,4 +1,4 @@
-odoo.define('pos_longpolling.LongpollingBus', function(require){
+odoo.define('pos_longpolling.bus_longpolling', function(require){
     "use strict";
 
     var LongpollingBus = require('bus.Longpolling');
