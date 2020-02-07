@@ -22,127 +22,115 @@ class PosOrder(models.Model):
     _inherit = "pos.order"
 
     salesman_id = fields.Many2one('res.users',string='Salesman')
+    is_draft_order = fields.Boolean(u'Es Pedido en Borrador?', copy=False)
+    
+    @api.multi
+    def _is_valid_for_draft(self):
+        return True
 
+    @api.model
     def create(self, values):
         order_id = super(PosOrder, self).create(values)
-        if not order_id.user_id.pos_user_type == 'cashier':
+        if order_id.user_id.pos_user_type != 'cashier' and order_id.is_draft_order and order_id._is_valid_for_draft():
             notifications = []
-            users = self.env['res.users'].search([])
-            for user in users:
-                if user.sales_persons:
-                    for salesperson in user.sales_persons:
-                        if salesperson.id == order_id.user_id.id:
-                            session = self.env['pos.session'].search([('user_id','=',user.id)], limit=1)
-                            if session:
-                                notifications.append(
-                                    [(self._cr.dbname, 'sale.note', user.id), {'new_pos_order': order_id.read()}])
-                                self.env['bus.bus'].sendmany(notifications)
+            cashiers = self.env['res.users'].search([('sales_persons', '!=', False)])
+            for user in cashiers:
+                for salesperson in user.sales_persons:
+                    if salesperson.id == order_id.salesman_id.id:
+                        session = self.env['pos.session'].search([
+                            ('user_id', '=', user.id),
+                            ('state', '=', 'opened'),
+                        ], limit=1)
+                        if session:
+                            notifications.append([(self._cr.dbname, 'sale.note', user.id), {'new_pos_order': order_id.read()}])
+            if notifications:
+                self.env['bus.bus'].sendmany(notifications)
         return order_id
 
     def _order_fields(self,ui_order):
         res = super(PosOrder, self)._order_fields(ui_order)
         res.update({
-            'salesman_id':ui_order.get('salesman_id') or False,
+            'salesman_id': ui_order.get('salesman_id') or False,
+            'is_draft_order': ui_order.get('is_draft_order') or False,
         });
         return res
 
     @api.multi
     def unlink(self):
-        notifications = []
-        notify_users = []
-        order_user = self.env['res.users'].browse(self.user_id.id)
-        if self.salesman_id:
-            if self._uid == self.salesman_id.id:
-                users = self.env['res.users'].search([])
-                for user in users:
-                    if user.sales_persons:
-                        for salesperson in user.sales_persons:
-                            if salesperson.id == order_id.user_id.id:
-                                session = self.env['pos.session'].search([('user_id','=',user.id)], limit=1)
-                                if session:
-                                    notify_users.append(session.user_id.id)
-            else:
-                notify_users.append(self.salesman_id.id)
-            for user in notify_users:
-                notifications.append([(self._cr.dbname, 'sale.note', user),
-                                          {'cancelled_sale_note': self.read()}])
-            self.env['bus.bus'].sendmany(notifications)
+        for order in self:
+            if order.salesman_id and order.config_id.enable_reorder:
+                notifications = []
+                notify_users = []
+                # si el q elimina el pedido no es el vendedor
+                # notificar al vendedor
+                if self._uid != order.salesman_id.id:
+                    notify_users.append(order.salesman_id.id)
+                # buscar los cajeros que son responsables de ese vendedor y notificarlos
+                cashiers = self.env['res.users'].search([('sales_persons', '!=', False)])
+                for user in cashiers:
+                    for salesperson in user.sales_persons:
+                        if salesperson.id == order.salesman_id.id:
+                            session = self.env['pos.session'].search([
+                                ('user_id','=',user.id),
+                                ('state', '=', 'opened'),
+                            ], limit=1)
+                            if session:
+                                notify_users.append(session.user_id.id)
+                for user in notify_users:
+                    notifications.append([(self._cr.dbname, 'sale.note', user), {'cancelled_sale_note': self.read()}])
+                self.env['bus.bus'].sendmany(notifications)
         return super(PosOrder, self).unlink()
 
     @api.multi
-    def write(self, vals):
-        res = super(PosOrder, self).write(vals)
-        notifications = []
-        notify_users = []
-        order_id = self.browse(vals.get('old_order_id'))
-        order_user = self.env['res.users'].browse(vals.get('user_id'))
-        users = self.env['res.users'].search([])
-        for user in users:
-            if user.sales_persons:
-                if user.id == order_user.id:
-                    session = self.env['pos.session'].search([('user_id','=',user.id)], limit=1)
-                    if session:
-                        notify_users.append(session.user_id.id)
-
-        for user in notify_users:
-            notifications.append(((self._cr.dbname, 'sale.note', user),
-                                      ('new_pos_order', order_id.read())))
-        self.env['bus.bus'].sendmany(notifications)
+    def action_pos_order_paid(self): 
+        order_draft = self.filtered(lambda x: x.is_draft_order and x.state == 'draft' and not x.statement_ids)
+        res = super(PosOrder, self-order_draft).action_pos_order_paid()
+        for order in self:
+            # solo notificar si el pedido era un pedido en borrador creado asi desde el pos
+            # cuando se tiene instalado el modulo pero no esta habilitado en el pos
+            # no se deberia notificar por gusto
+            if not order.config_id.enable_reorder:
+                continue
+            if not order._is_valid_for_draft():
+                continue
+            notifications = []
+            notify_users = []
+            if order.salesman_id:
+                notify_users.append(order.salesman_id.id)
+            cashiers = self.env['res.users'].search([('sales_persons', '!=', False)])
+            for user in cashiers:
+                for salesperson in user.sales_persons:
+                    if salesperson.id == order.salesman_id.id:
+                        session = self.env['pos.session'].search([
+                            ('user_id','=',user.id),
+                            ('state', '=', 'opened'),
+                        ], limit=1)
+                        if session:
+                            notify_users.append(session.user_id.id)
+            if len(notify_users) > 0:
+                for user in notify_users:
+                    notifications.append([(self._cr.dbname, 'sale.note', user), {'new_pos_order': order.read()}])
+                self.env['bus.bus'].sendmany(notifications)
         return res
-
-    @api.multi
-    def action_pos_order_paid(self):
-        if not self.test_paid():
-            raise UserError(_("Order is not paid."))
-        self.write({'state': 'paid'})
-        notifications_for_products =[]
-        notifications = []
-        notify_users = []
-        order_id = self
-        order_user = self.env['res.users'].browse(order_id.user_id.id)
-        if order_id.salesman_id:
-            notify_users.append(order_id.salesman_id.id)
-        users = self.env['res.users'].search([])
-        for user in users:
-            if user.sales_persons:
-                if user.id == order_user.id:
-                    session = self.env['pos.session'].search([('user_id','=',user.id)], limit=1)
-                    if session:
-                        notify_users.append(session.user_id.id)
-        if len(notify_users) > 0:
-            for user in notify_users:
-                notifications.append([(self._cr.dbname, 'sale.note', user),
-                                          {'new_pos_order': order_id.read()}])
-            self.env['bus.bus'].sendmany(notifications)
-        return self.create_picking()
+    
+    @api.model
+    def create_from_ui(self, orders):
+        # filtrar los pedidos que estaban en borrador pero ya se pagaron para no volver a procesarlos
+        submitted_references = [o['data']['old_order_id'] for o in orders if o['data'].get('old_order_id')]
+        pos_order_ids = self.search([('id', 'in', submitted_references), ('state', '!=', 'draft')]).ids
+        orders_to_save = [o for o in orders if o['data'].get('old_order_id') not in pos_order_ids]
+        return super(PosOrder, self).create_from_ui(orders_to_save)
 
     @api.model
     def _process_order(self,order):
-        pos_line_obj = self.env['pos.order.line']
         draft_order_id = order.get('old_order_id')
-        if order.get('draft_order'):
-            if not draft_order_id:
-                order.pop('draft_order')
-                order_id = self.create(self._order_fields(order))
-                return order_id
-            else:
-                order_id = draft_order_id
-                pos_line_ids = pos_line_obj.search([('order_id', '=', order_id)])
-                if pos_line_ids:
-                    pos_line_obj.unlink(pos_line_ids)
-                self.write([order_id],
-                           {'lines': order['lines'],
-                            'partner_id': order.get('partner_id')})
-                return order_id
-
         if not order.get('draft_order') and draft_order_id:
             order_id = draft_order_id
             order_obj = self.browse(order_id)
-            pos_line_ids = pos_line_obj.search([('order_id', '=', order_id)])
-            if pos_line_ids:
-                for line_id in pos_line_ids:
-                    line_id.unlink()
-            temp = order.copy()
+            prec_acc = order_obj.pricelist_id.currency_id.decimal_places
+            if order_obj.lines:
+                order_obj.lines.unlink()
+            temp = self._order_fields(order)
             temp.pop('statement_ids', None)
             temp.pop('name', None)
             temp.update({
@@ -150,26 +138,49 @@ class PosOrder(models.Model):
                 'session_id': order.get('pos_session_id'),
             })
             order_obj.write(temp)
-            for payments in order['statement_ids']:
-                order_obj.add_payment(self._payment_fields(payments[2]))
-            session = self.env['pos.session'].browse(order['pos_session_id'])
-            if session.sequence_number <= order['sequence_number']:
-                session.write({'sequence_number': order['sequence_number'] + 1})
-                session.refresh()
-            if not float_is_zero(order['amount_return'], self.env['decimal.precision'].precision_get('Account')):
-                cash_journal = session.cash_journal_id
-                if not cash_journal:
-                    cash_journal_ids = session.statement_ids.filtered(lambda st: st.journal_id.type == 'cash')
-                    if not len(cash_journal_ids):
-                        raise Warning(_('error!'),
-                                             _("No cash statement found for this session. Unable to record returned cash."))
-                    cash_journal = cash_journal_ids[0].journal_id
-                order_obj.add_payment({
-                    'amount': -order['amount_return'],
-                    'payment_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-                    'payment_name': _('return'),
-                    'journal': cash_journal.id,
-                })
+            journal_ids = set()
+            if not order_obj.statement_ids:
+                for payments in order['statement_ids']:
+                    if not float_is_zero(payments[2]['amount'], precision_digits=prec_acc):
+                        order_obj.add_payment(self._payment_fields(payments[2]))
+                    journal_ids.add(payments[2]['journal_id'])
+
+                session = self.env['pos.session'].browse(order['pos_session_id'])
+                if session.sequence_number <= order['sequence_number']:
+                    session.write({'sequence_number': order['sequence_number'] + 1})
+                    session.refresh()
+    
+                if not float_is_zero(order['amount_return'], prec_acc):
+                    cash_journal_id = session.cash_journal_id.id
+                    if not cash_journal_id:
+                        # Select for change one of the cash journals used in this
+                        # payment
+                        cash_journal = self.env['account.journal'].search([
+                            ('type', '=', 'cash'),
+                            ('id', 'in', list(journal_ids)),
+                        ], limit=1)
+                        if not cash_journal:
+                            # If none, select for change one of the cash journals of the POS
+                            # This is used for example when a customer pays by credit card
+                            # an amount higher than total amount of the order and gets cash back
+                            cash_journal = [statement.journal_id for statement in session.statement_ids if statement.journal_id.type == 'cash']
+                            if not cash_journal:
+                                raise UserError(_("No cash statement found for this session. Unable to record returned cash."))
+                        cash_journal_id = cash_journal[0].id
+                    order_obj.add_payment({
+                        'amount': -order['amount_return'],
+                        'payment_date': fields.Date.context_today(self),
+                        'payment_name': _('return'),
+                        'journal': cash_journal_id,
+                    })
+                if order_obj.rounding:
+                    rounding_journal_id = order_obj.session_id.config_id.rounding_journal_id
+                    if rounding_journal_id:
+                        order_obj.add_payment({
+                            'amount': order_obj.rounding * -1,
+                            'payment_name': 'Redondeo',
+                            'journal': rounding_journal_id.id,
+                        })
             return order_obj
         if not order.get('draft_order') and not draft_order_id:
             order_id = super(PosOrder, self)._process_order(order)
@@ -214,6 +225,8 @@ class pos_config(models.Model):
     enable_reorder = fields.Boolean("Order Sync")
     enable_operation_restrict = fields.Boolean("Operation Restrict")
     pos_managers_ids = fields.Many2many('res.users','posconfig_partner_rel','location_id','partner_id', string='Managers')
+    enable_order_merge = fields.Boolean(string="Unificar Pedidos en borrador?", default=False)
+    enable_pedidos_list = fields.Boolean(string="Mostrar Listado de Pedidos?", default=True)
 
 
 class ResUsers(models.Model):
@@ -243,8 +256,8 @@ class ResUsers(models.Model):
                 users.append(sale_person_ids.ids)
             if users:
                 args += [['id', 'in', users[0]]]
-            if selected_sales_persons:
-                args += [['id', 'not in', selected_sales_persons[0]]]
+#             if selected_sales_persons:
+#                 args += [['id', 'not in', selected_sales_persons[0]]]
         return super(ResUsers, self).name_search(name, args=args, operator=operator, limit=limit)
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

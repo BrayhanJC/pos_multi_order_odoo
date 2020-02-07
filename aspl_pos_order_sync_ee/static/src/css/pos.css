@@ -102,15 +102,38 @@
 .pos .sale-note-order-list tr {
 	background: transparent;
 }
+.pos .sale-note-order-list tr.highlight{
+    transition: all 150ms linear;
+    background: rgb(110,200,155) !important;
+    color: white;
+}
 .pos .sale-note-order-list tbody.order-list-contents tr {
 	border-bottom: 1px solid #bfbfbf;
 }
-.pos .sale-note-order-list {
-	font-size: 14px;
-	line-height: 36px;
+.pos .client-line:hover {
+    color: rgb(120,210,165);
+}
+.pos .left-content-order {
+	float: left;
+	width: 60%;
+}
+.pos .right-content-order {
+	float: right;
+	width: 35%;
+}
+.order-merge {
+    line-height: 32px;
+    padding: 3px 13px;
+    font-size: 20px;
+    background: rgb(230, 230, 230);
+    margin: 12px;
+    border-radius: 3px;
+    border: solid 1px rgb(209, 209, 209);
+    cursor: pointer;
+    transition: all 150ms linear;
 }
 .pos .sale-note-order-list {
-	font-size: 16px;
+	font-size: 12px;
 	width: 100%;
 	line-height: 40px;
 }

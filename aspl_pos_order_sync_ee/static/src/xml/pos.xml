@@ -66,7 +66,7 @@
 
 	<t t-name="SaleNoteListScreenWidget">
         <div class="orderlist-screen screen">
-            <div class="screen-content orderlist-screen">
+            <div class="screen-content orderlist-screen" style="max-width: 90%;">
                 <section class="top-content">
                     <span class='button back'>
                         <i class='fa fa-angle-double-left'></i>
@@ -83,33 +83,54 @@
                         <section class='subwindow'>
                             <div class='subwindow-container'>
                                 <div class='subwindow-container-fix touch-scrollable scrollable-y' style="height:auto;max-height: 490px !important;">
-                                    <div>
-                                        <table class='sale-note-order-list'>
-                                                <thead class="bgcolorset">  
-                                                    <tr>
-                                                    <th>Order Ref</th>
-                                                    <th>Receipt Ref</th>
-                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
-                                                    	<th>Salesman</th>
-                                                    </t>
-                                                    <th>Customer</th>
-                                                    <th>Order Date</th>
-                                                    <th>Total</th>
-                                                    <th>Receipt</th>
-                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
-                                                    	<th>Pay</th>
-                                                    </t>
-                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='salesman'">
-                                                    	<th>Edit</th>
-                                                    </t>
-                                                    <th>Reorder</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody  class='sale-note-list-contents'>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                	<div>
+	                                    <div class="left-content-order">
+	                                        <table class='sale-note-order-list'>
+	                                                <thead class="bgcolorset">  
+	                                                    <tr>
+	                                                    <th>Order Ref</th>
+	                                                    <th>Receipt Ref</th>
+	                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
+	                                                    	<th>Salesman</th>
+	                                                    </t>
+	                                                    <th>Customer</th>
+	                                                    <th>Order Date</th>
+	                                                    <th>Total</th>
+	                                                    <th>Receipt</th>
+	                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
+	                                                    	<th>Pay</th>
+	                                                    </t>
+	                                                    <t t-if="widget.pos.get_cashier().pos_user_type=='salesman'">
+	                                                    	<th>Edit</th>
+	                                                    </t>
+	                                                    <th>Reorder</th>
+	                                                    <th></th>
+	                                                </tr>
+	                                            </thead>
+	                                            <tbody  class='sale-note-list-contents'>
+	                                            </tbody>
+	                                        </table>
+	                                    </div>
+	                                    <div class="right-content-order" t-if="widget.pos.config and widget.pos.config.enable_order_merge">
+	                                    	<span class="button order-merge highlight oe_hidden">
+									            <i class="fa fa-chevron-right"></i>
+									            Unificar Pedidos
+									        </span>
+	                                        <table class='sale-note-order-list'>
+								               <thead class="bgcolorset">  
+								                   <tr>
+									                   <th>Order Ref</th>
+									                   <th>Salesman</th>
+									                   <th>Customer</th>
+									                   <th>Total</th>
+									                   <th></th>
+									               </tr>
+									           </thead>
+									           <tbody  class='sale-note-list-contents-merge'>
+									           </tbody>
+									       </table>
+	                                    </div>
+	                                </div>
                                 </div>
                             </div>
                         </section>
@@ -120,15 +141,15 @@
     </t>
 
 	<t t-name="SaleNotelistLine">
-        <tr t-attf-class='client-line #{order.state == "draft"?"draft-font":""}' t-att-data-id='order.id' >
+        <tr t-attf-class='client-line #{order.state == "draft"?"draft-font":""} #{ selected ? "selected" : ""}' t-att-data-id='order.id' >
             <td><t t-esc='order.name' /></td>
             <td><t t-esc='order.pos_reference' /></td>
             <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
             	<td><t t-esc="order.salesman_id ? order.salesman_id[1] : ''" /></td>
             </t>
             <td><t t-esc="order.partner_id ? order.partner_id[1] : ''" /></td>
-            <td><t t-esc='order.date_order or ""' /></td>
-            <td><t t-esc='order.amount_total or ""' /></td>
+            <td><t t-esc='widget.format_datetime(order.date_order)' /></td>
+            <td class="pos-right-align"><t t-esc='widget.format_currency(order.amount_total or 0)' /></td>
             <td>
                 <span id="print_order" t-att-data-id='order.id' style="cursor:pointer">
                     	<i class="fa fa-print" aria-hidden="true" style="font-size: x-large;"></i>
@@ -136,14 +157,16 @@
             </td>
             <td>
                 <t t-if="order.state == 'draft'">
-                    <span id="edit_order" t-att-data-id='order.id' t-att-data-operation="edit" style="cursor:pointer;font-size: 27px;">
-						<t t-if="widget.pos.get_cashier().pos_user_type=='salesman'">
+					<t t-if="widget.pos.get_cashier().pos_user_type=='salesman'">
+						<span id="edit_order" t-att-data-id='order.id' data-operation="edit" style="cursor:pointer;font-size: 27px;">
 	                    	<i class="fa fa-edit" aria-hidden="true" style="font-size: x-large;"></i>
-	                    </t>
-	                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
+                    	</span>
+                    </t>
+                    <t t-if="widget.pos.get_cashier().pos_user_type=='cashier'">
+                    	<span id="edit_order" t-att-data-id='order.id' data-operation="pay" style="cursor:pointer;font-size: 27px;">
 	                    	<i class="fa fa-money"></i>
-	                    </t>
-                    </span>
+	                    </span>
+                    </t>
                 </t>
             </td>
             <td>
@@ -162,11 +185,25 @@
             </td>
         </tr>
     </t>
+    
+    <t t-name="SaleNotelistLineMerge">
+        <tr t-attf-class='client-line-merge' t-att-data-id='order.id' >
+            <td><t t-esc='order.pos_reference' /></td>
+            <td><t t-esc="order.salesman_id ? order.salesman_id[1] : ''" /></td>
+            <td><t t-esc="order.partner_id ? order.partner_id[1] : ''" /></td>
+            <td class="pos-right-align"><t t-esc='widget.format_currency(order.amount_total or 0)' /></td>
+            <td>
+                <span id="delete_merge_sale_note" t-att-data-id='order.id' t-att-data-operation="delete" style="cursor:pointer;font-size: 27px;">
+                    <i class="fa fa-trash" aria-hidden="true"/>
+                </span>
+            </td>
+        </tr>
+    </t>
 
 	<t t-name="SaleNoteQuickWidgetLine">
         <tr t-attf-class='quick_sale_note_line #{order.state == "draft"?"draft-font":""}' t-att-data-id='order.id' >
             <td><t t-esc='order.pos_reference' /></td>
-            <td><t t-esc='order.amount_total or ""' /></td>
+            <td><t t-esc='widget.format_currency(order.amount_total or 0)' /></td>
             <td>
                 <span id="quick_delete_draft_order" t-att-data-id='order.id' style="cursor:pointer">
 					<i class="fa fa-trash" aria-hidden="true" style="font-size: x-large;"></i>
@@ -178,61 +215,6 @@
                 </span>
             </td>
         </tr>
-    </t>
-
-    <t t-name="ProductPopup">
-         <div class="modal-dialog">
-            <div class="popup popup-reorder-product">
-               <div class="header">
-                   <div class="btn button cancel">
-                        <i class="fa fa-times"></i>
-                   </div>
-                    <p class="title">Products</p>
-                </div>
-                <div style="height: 276px;overflow: auto;">
-                    <table class="popup-product-list table">
-                         <thead>
-                           <tr>
-                               <th>#</th>
-                               <th>Product</th>
-                               <th>Quantity</th>
-                               <th>Price</th>
-                               <th>Discount</th>
-                               <th>Subtotal</th>
-                           </tr>
-                       </thead>
-                       <tbody class="popup-product-list-contents">
-                           <t t-if="widget.order_lines">
-	                           <t t-foreach="widget.order_lines" t-as="line">
-	                              <tr>
-	                                  <td><t t-esc="widget.order_lines.indexOf(line) + 1" /></td>
-	                                  <td><t t-esc="line.product_id[1]" /></td>
-	                                  <td><t t-esc="line.qty" /></td>
-                                      <td><t t-esc="widget.format_currency(line.price_unit)" /></td>
-                                      <td><t t-esc="line.discount" /></td>
-                                      <td><t t-esc="widget.format_currency(line.price_subtotal)" /></td>
-	                              </tr>
-	                           </t>
-                           </t>
-                       </tbody>
-                    </table>
-                </div>
-                <div class="footer">
-                    <t t-if="widget.state == 'draft'">
-                       <button class="button confirm save edit">
-                            <div class="icon"><i class="fa fa-pencil-square-o" aria-hidden="true" height="20" width="20"></i></div>
-                            <div class="text">Edit</div>
-                        </button>
-                    </t>
-                    <t t-if="widget.state == 'paid' or widget.state == 'done'">
-                       <button class="button confirm save duplicate">
-                            <div class="icon"><i class="fa fa-repeat" aria-hidden="true" height="20" width="20"></i></div>
-                            <div class="text">Reorder</div>
-                        </button>
-                    </t>
-                </div>
-            </div>
-         </div>
     </t>
 
     <t t-extend="PosTicket">

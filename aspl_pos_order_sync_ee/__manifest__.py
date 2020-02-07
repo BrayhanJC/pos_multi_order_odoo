@@ -16,7 +16,12 @@
     'description': "Allow salesperson to only create draft order and send draft order to Cashier for payment",
     'category': 'Point Of Sale',
     'website': 'http://www.acespritech.com',
-    'depends': ['base', 'point_of_sale'],
+    'depends': [
+        'base',
+        'point_of_sale',
+        'pos_cashier_select',
+        'pos_orders_history',
+    ],
     'price': 25.00, 
     'currency': 'EUR',
     'images': [
