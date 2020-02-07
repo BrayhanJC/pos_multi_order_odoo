@@ -10,6 +10,7 @@
         'point_of_sale',
     ],
     'data': [
+        'views/account_journal_view.xml',
         'views/pos_assets.xml',
     ],
     'qweb': [

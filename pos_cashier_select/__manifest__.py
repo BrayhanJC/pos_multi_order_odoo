@@ -15,6 +15,7 @@
 
     "depends": [
         "point_of_sale",
+        "pos_base",
     ],
     "external_dependencies": {"python": [], "bin": []},
     "data": [

@@ -19,8 +19,11 @@
     'depends': [
         'base',
         'point_of_sale',
+        'pos_base',
         'pos_cashier_select',
         'pos_orders_history',
+        'pos_note',
+        'pos_rounding',
     ],
     'price': 25.00, 
     'currency': 'EUR',
