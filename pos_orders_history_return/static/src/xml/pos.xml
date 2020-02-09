@@ -6,14 +6,14 @@
     <t t-extend="OrderHistory">
         <t t-jquery=".actions.oe_hidden" t-operation="append">
             <t t-if="!order.returned_order">
-                <span class="button return"><i class="fa fa-undo"></i> Return</span>
+                <span class="button return oe_hidden"><i class="fa fa-undo"></i> Return</span>
             </t>
         </t>
     </t>
 
     <t t-extend="OrdersHistoryScreenWidget">
         <t t-jquery=".button.back" t-operation="after">
-            <span class="button return-no-receipt">No Receipt</span>
+            <span class="button return-no-receipt" style="left: 12%;">No Receipt</span>
         </t>
     </t>
 
@@ -42,6 +42,9 @@
     </t>
 
     <t t-extend="Product">
+    	<t t-jquery="article" t-operation="attributes">
+    		<attribute name='t-att-data-line_origin_id'>product.line_origin_id</attribute>
+    	</t>
         <t t-jquery="t[t-if='!product.to_weight'] t[t-esc*='widget.format_currency']" t-operation="replace">
             <t t-if="widget.return_mode and product.old_price">
                 <t t-esc="widget.format_currency(product.old_price,'Product Price')"/>

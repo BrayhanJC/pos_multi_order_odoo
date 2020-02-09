@@ -73,4 +73,17 @@
             </xpath>
         </field>
     </record>
+    
+    <record id="pos_order_search_view" model="ir.ui.view">
+		<field name="name">POS Order search</field>
+		<field name="model">pos.order</field>
+		<field name="inherit_id" ref="point_of_sale.view_pos_order_filter" />
+		<field name="arch" type="xml">
+			<xpath expr="//field[@name='name']" position="after">
+				<field name='pos_reference'
+					filter_domain="['|',('pos_reference','ilike',self), ('pos_reference_clean','ilike',self)]" />
+			</xpath>
+		</field>
+	</record>
+	
 </odoo>

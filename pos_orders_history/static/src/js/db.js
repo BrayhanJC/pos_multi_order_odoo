@@ -47,6 +47,12 @@ odoo.define('pos_orders_history.db', function (require) {
             if(order.pos_reference){
                 str += '|' + order.pos_reference;
             }
+            if(order.pos_reprint_reference){
+                str += '|' + order.pos_reprint_reference;
+            }
+            if(order.pos_reference_clean){
+                str += '|' + order.pos_reference_clean;
+            }
             if(order.partner_id){
                 str += '|' + order.partner_id[1];
             }

@@ -6,7 +6,7 @@
     "name": """Reprint POS Orders Receipt""",
     "summary": """Reprint receipts of paid POS orders""",
     "category": "Point of Sale",
-    # "live_test_url": "http://apps.it-projects.info/shop/product/pos-orders-reprint?version=12.0",
+    "live_test_url": "http://apps.it-projects.info/shop/product/pos-orders-reprint?version=12.0",
     "images": ["images/pos_orders_reprint_main.png"],
     "version": "12.0.1.0.4",
     "application": False,
@@ -20,12 +20,16 @@
 
     "depends": [
         "pos_orders_history",
+        "pos_disable_payment",
+        "generic_pos",
     ],
     "external_dependencies": {"python": [], "bin": []},
     "data": [
+        'security/groups.xml',
         "security/ir.model.access.csv",
         "views/template.xml",
         "views/view.xml",
+        "views/res_users_view.xml",
         "data/base_action_rule.xml",
     ],
     "demo": [

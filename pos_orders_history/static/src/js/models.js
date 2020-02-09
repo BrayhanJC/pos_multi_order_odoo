@@ -6,6 +6,8 @@ odoo.define('pos_orders_history.models', function (require) {
     "use strict";
     var models = require('point_of_sale.models');
     var rpc = require('web.rpc');
+    var longpolling = require('pos_longpolling.connection');
+
 
     var _super_pos_model = models.PosModel.prototype;
     models.PosModel = models.PosModel.extend({
@@ -20,7 +22,7 @@ odoo.define('pos_orders_history.models', function (require) {
         on_orders_history_updates: function(message) {
             var self = this;
             // state of orders
-            var state = ['paid'];
+            var state = ['paid', 'invoiced'];
             if (this.config.show_cancelled_orders) {
                 state.push('cancel');
             }
@@ -53,6 +55,62 @@ odoo.define('pos_orders_history.models', function (require) {
                 model: 'pos.order.line',
                 method: 'search_read',
                 args: [[['order_id', '=', id]]]
+            });
+        },
+        manual_update_order_history: function(query) {
+            var self = this;
+            var def = new $.Deferred();
+            this.get_order_histories(query).then(function(data) {
+                if (!data) {
+                    def.resolve();
+                    return;
+                }
+
+                self.update_orders_history(data);
+                self.get_order_lines(_.pluck(data, 'id')).then(function(lines){
+                    self.update_orders_history_lines(lines);
+                    def.resolve();
+                });
+
+            });
+            return def;
+        },
+        get_domain_for_order_history(query){
+        	var self = this;
+        	var state = ['paid', 'invoiced'];
+            if (self.config.show_cancelled_orders) {
+                state.push('cancel');
+            }
+            if (self.config.show_posted_orders) {
+                state.push('done');
+            }
+            var res = [['state','in',state]];
+            if (query){
+            	res.push(['pos_history_reference_uid','=',query]);
+            } else if (self.config.load_orders_of_last_n_days) {
+            	// number of orders
+                var today = new Date();
+                today.setHours(0,0,0,0);
+                // load orders from the last date
+                var last_date = new Date(today.setDate(today.getDate()-self.config.number_of_days)).toISOString();
+                res.push(['date_order','>=',last_date]);
+            } else if (self.config.load_barcode_order_only){
+            	res.push(['id', '=', 0]);
+            }
+            return res;
+        },
+        get_order_histories: function(query) {
+            return rpc.query({
+                model: 'pos.order',
+                method: 'search_read',
+                args: [this.get_domain_for_order_history(query)]
+            });
+        },
+        get_order_lines: function(order_ids) {
+            return rpc.query({
+                model: 'pos.order.line',
+                method: 'search_read',
+                args: [[['order_id','in',order_ids]]]
             });
         },
         update_orders_history: function (orders) {
@@ -115,6 +173,11 @@ odoo.define('pos_orders_history.models', function (require) {
 
     var _super_order_model = models.Order.prototype;
     models.Order = models.Order.extend({
+    	initialize: function(attributes,options) {
+			var res = _super_order_model.initialize.call(this, attributes,options);
+			this.pos_reference_clean = this.uid.toString().replace("-", "").replace("-", "");
+			return res;
+	    },
         set_mode: function(mode) {
             this.mode = mode;
         },
@@ -124,10 +187,13 @@ odoo.define('pos_orders_history.models', function (require) {
         export_as_JSON: function() {
             var data = _super_order_model.export_as_JSON.apply(this, arguments);
             data.mode = this.mode;
+            data.pos_reprint_reference = this.pos_reprint_reference || '';
+            data.pos_reference_clean = this.pos_reference_clean || '';
             return data;
         },
         init_from_JSON: function(json) {
             this.mode = json.mode;
+            this.pos_reprint_reference = json.pos_reprint_reference || '';
             _super_order_model.init_from_JSON.call(this, json);
         }
     });
@@ -139,7 +205,7 @@ odoo.define('pos_orders_history.models', function (require) {
             var domain = [];
 
             // state of orders
-            var state = ['paid'];
+            var state = ['paid', 'invoiced'];
             if (self.config.show_cancelled_orders) {
                 state.push('cancel');
             }

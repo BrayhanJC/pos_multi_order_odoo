@@ -5,6 +5,9 @@ odoo.define('pos_orders_history_reprint.models', function (require) {
     "use strict";
     var models = require('pos_orders_history.models');
     var rpc = require('web.rpc');
+    var longpolling = require('pos_longpolling.connection');
+    
+    models.load_fields("res.users", ['allow_reprint']);
 
     var _super_pos_model = models.PosModel.prototype;
     models.PosModel = models.PosModel.extend({
@@ -65,7 +68,7 @@ odoo.define('pos_orders_history_reprint.models', function (require) {
         domain: function(self) {
             var orders = self.db.sorted_orders;
             var pos_reference = _.map(orders, function(order) {
-                return order.pos_reference;
+                return order.pos_reprint_reference || order.pos_reference;
             });
             // load all receipts for the orders history
             return [['pos_reference','in',pos_reference]];

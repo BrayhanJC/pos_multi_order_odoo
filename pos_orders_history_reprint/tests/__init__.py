@@ -1,1 +1,1 @@
-from . import test_history_reprint
+from . import default_test

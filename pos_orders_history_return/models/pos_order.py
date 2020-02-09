@@ -13,7 +13,33 @@ class PosOrder(models.Model):
     _inherit = "pos.order"
 
     returned_order = fields.Boolean('Returned Order', default=False)
-
+    origin_order_id = fields.Many2one('pos.order', 
+        'Pedido Original', readonly=True, copy=False)
+    devolution_ids = fields.One2many('pos.order', 'origin_order_id',
+        'Devoluciones', readonly=True, copy=False)
+    
+    @api.model
+    def create(self, vals):
+        new_order = super(PosOrder, self).create(vals)
+        # cuando tiene un pedido de origen es una devolucion
+        # verificar si hay lineas que no tienen linea de origen
+        # y pasarle la linea de origen en base al producto
+        if new_order.origin_order_id:
+            for line in new_order.lines:
+                if line.line_origin_id:
+                    continue
+                line_origin = new_order.origin_order_id.lines.filtered(lambda x: x.product_id == line.product_id)
+                if line_origin:
+                    line.line_origin_id = line_origin[0].id
+        return new_order
+    
+    @api.multi
+    def _prepare_refund(self, current_session):
+        vals = super(PosOrder, self)._prepare_refund(current_session)
+        vals['origin_order_id'] = self.id
+        vals['returned_order'] = True #compatibilidad con pos_order_history_return
+        return vals
+    
     @api.model
     def create_from_ui(self, orders):
         # Keep return orders
@@ -21,71 +47,62 @@ class PosOrder(models.Model):
         pos_order = self.search([('pos_reference', 'in', submitted_references)])
         existing_orders = pos_order.read(['pos_reference'])
         existing_references = set([o['pos_reference'] for o in existing_orders])
-        orders_to_save = [o for o in orders if o['data']['name'] in existing_references]
+        orders_to_save = [o for o in orders if o['data']['name'] in existing_references and o['data'].get('return_lines')]
 
-        pos_retuned_orders = [o for o in orders_to_save if o['data'].get('mode') and o['data'].get('mode') == 'return']
-        self.return_from_ui(pos_retuned_orders)
+        self.return_from_ui(orders_to_save)
+
         return super(PosOrder, self).create_from_ui(orders)
 
     @api.multi
     def return_from_ui(self, orders):
         for tmp_order in orders:
-            # eliminates the return of the order several times at the same time
-            returned_order = self.search([('pos_reference', '=', tmp_order['data']['name']),
-                                          ('date_order', '=', tmp_order['data']['creation_date']),
-                                          ('returned_order', '=', True)])
-            if not returned_order:
-                to_invoice = tmp_order['to_invoice']
-                order = tmp_order['data']
-                if to_invoice:
-                    self._match_payment_to_invoice(order)
+            to_invoice = tmp_order['to_invoice']
+            order = tmp_order['data']
+            if to_invoice:
+                self._match_payment_to_invoice(order)
 
-                order['returned_order'] = True
-                pos_order = self._process_order(order)
+            order['returned_order'] = True
+            pos_order = self._process_order(order)
 
-                try:
-                    pos_order.action_pos_order_paid()
-                except psycopg2.OperationalError:
-                    raise
-                except Exception as e:
-                    _logger.error('Could not fully process the POS Order: %s', tools.ustr(e))
+            try:
+                pos_order.action_pos_order_paid()
+            except psycopg2.OperationalError:
+                raise
+            except Exception as e:
+                _logger.error('Could not fully process the POS Order: %s', tools.ustr(e))
+                raise
 
-                if to_invoice:
-                    pos_order.action_pos_order_invoice()
-                    pos_order.invoice_id.sudo().action_invoice_open()
-                    pos_order.account_move = pos_order.invoice_id.move_id
-
+            if to_invoice:
+                pos_order.action_pos_order_invoice()
+                pos_order.invoice_id.sudo().action_invoice_open()
+                pos_order.account_move = pos_order.invoice_id.move_id
+    
     @api.model
-    def _process_order(self, pos_order):
-        if pos_order.get('returned_order'):
-            prec_acc = self.env['decimal.precision'].precision_get('Account')
-            pos_session = self.env['pos.session'].browse(pos_order['pos_session_id'])
-            if pos_session.state == 'closing_control' or pos_session.state == 'closed':
-                pos_order['pos_session_id'] = self._get_valid_session(pos_order).id
-            order = self.create(self._order_fields(pos_order))
-            order.write({'returned_order': True})
-            journal_ids = set()
-            for payments in pos_order['statement_ids']:
-                if not float_is_zero(payments[2]['amount'], precision_digits=prec_acc):
-                    order.add_payment(self._payment_fields(payments[2]))
-                journal_ids.add(payments[2]['journal_id'])
-            if pos_session.sequence_number <= pos_order['sequence_number']:
-                pos_session.write({'sequence_number': pos_order['sequence_number'] + 1})
-                pos_session.refresh()
-            if not float_is_zero(pos_order['amount_return'], prec_acc):
+    def _order_fields(self, ui_order):
+        order_vals = super(PosOrder, self)._order_fields(ui_order)
+        if ui_order.get('returned_order'):
+            order_vals['returned_order'] = True
+        return_data_aditional = ui_order.get('return_data_aditional')
+        # return_data_aditional es un diccionario creado en JS con valores adicionales a pasar al backend
+        # solo tomar los campos que existan en pos.order para evitar procesar campos que no existan
+        # pasar las referencias a la NC en base al pedido original
+        if ui_order.get('origin_order_id'):
+            order_vals['origin_order_id'] = ui_order['origin_order_id']
+            if return_data_aditional:
+                for field_name in return_data_aditional:
+                    if field_name in self._fields:
+                        order_vals[field_name] = return_data_aditional[field_name]
+        return order_vals
 
-                cash_journal_id = pos_session.cash_journal_id.id
-                if not cash_journal_id:
-                    cash_journal = self.env['account.journal'].search([('id', 'in', list(journal_ids))], limit=1)
-                    if not cash_journal:
-                        cash_journal = [statement.journal_id for statement in pos_session.statement_ids]
-                    cash_journal_id = cash_journal[0].id
-                order.add_payment({
-                    'amount': -pos_order['amount_return'],
-                    'payment_date': fields.Datetime.now(),
-                    'payment_name': _('return'),
-                    'journal': cash_journal_id,
-                })
-            return order
-        else:
-            return super(PosOrder, self)._process_order(pos_order)
+
+class PosOrderLine(models.Model):
+
+    _inherit = 'pos.order.line'
+    
+    line_origin_id = fields.Many2one('pos.order.line', u'Linea Original', index=True, copy=False)
+
+    @api.multi
+    def _prepare_refund_line(self, new_order):
+        vals = super(PosOrderLine, self)._prepare_refund_line(new_order)
+        vals['line_origin_id'] = self.id
+        return  vals

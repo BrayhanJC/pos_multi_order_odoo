@@ -2,7 +2,7 @@
 # Copyright 2018 Artem Losev
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl.html).
 
-from odoo import fields, models, api
+from odoo import fields, models, api, SUPERUSER_ID
 import re
 
 
@@ -27,19 +27,29 @@ class PosConfig(models.Model):
     @api.model
     def notify_orders_updates(self):
         ids = self.env.context['active_ids']
-        if len(ids):
+        if len(ids) and self.env.uid != SUPERUSER_ID:
             message = {"updated_orders": ids}
-            self.search([])._send_to_channel(CHANNEL, message)
+            self.search([('load_barcode_order_only', '=', False)])._send_to_channel(CHANNEL, message)
 
 
 class PosOrder(models.Model):
     _inherit = 'pos.order'
 
     pos_name = fields.Char(related="config_id.name")
-    pos_history_reference_uid = fields.Char(compute='_compute_pos_history_reference_uid', readonly=True, store=True)
+    pos_reference_clean = fields.Char('Referencia del pos', required=False) # la referencia solo con numeros(sin palabra Pedido ni guiones)
+    pos_history_reference_uid = fields.Char(compute='_compute_pos_history_reference_uid', readonly=True, store=True) # referencia con guiones(sin palabra Pedido)
+    pos_reprint_reference = fields.Char(readonly=True, copy=False)
 
     @api.depends('pos_reference')
     def _compute_pos_history_reference_uid(self):
         for r in self:
             reference = r.pos_reference and re.search(r'\d{1,}-\d{1,}-\d{1,}', r.pos_reference)
             r.pos_history_reference_uid = reference and reference.group(0) or ''
+
+
+    @api.model
+    def _order_fields(self, ui_order):
+        order_fields = super(PosOrder, self)._order_fields(ui_order)
+        order_fields['pos_reprint_reference'] = ui_order.get('pos_reprint_reference') or False
+        order_fields['pos_reference_clean'] = ui_order.get('pos_reference_clean')
+        return order_fields
